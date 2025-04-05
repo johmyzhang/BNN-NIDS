@@ -104,8 +104,10 @@ class BinarizeLinear(nn.Linear):
 
     def forward(self, input):
 
-        if input.size(1) != 784:
+        if input.size(1) != 144:
             input_b=binarized(input)
+        else:
+            input_b=input
         weight_b=binarized(self.weight)
         out = nn.functional.linear(input_b,weight_b)
         if not self.bias is None:

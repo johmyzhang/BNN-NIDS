@@ -7,10 +7,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
+
+from can_dataset import PacketImageDataset
 from models.binarized_modules import  BinarizeLinear,BinarizeConv2d
 from models.binarized_modules import  Binarize,HingeLoss
+from torch.utils.data import DataLoader
+
 # Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+parser = argparse.ArgumentParser(description='CAN Data Test')
 parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 256)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -29,6 +33,9 @@ parser.add_argument('--gpus', default=3,
                     help='gpus used for training - e.g 0,1,3')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
+parser.add_argument('--train-datapath', type=str, default='train_data')
+parser.add_argument('--test-datapath', type=str, default='test_data')
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -38,40 +45,45 @@ if args.cuda:
 
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
-train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True,
-                   transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-    batch_size=args.batch_size, shuffle=True, **kwargs)
-test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-    batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
+training_data = PacketImageDataset(
+    img_dir=args.train_datapath,
+    annotations_file=f'{args.train_datapath}/train.csv',
+    transform=transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.39,), (0.28,))
+    ]))
+test_data = PacketImageDataset(
+    img_dir=args.test_datapath,
+    annotations_file=f'{args.test_datapath}/test.csv',
+    transform=transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.39,), (0.28,))
+    ]))
+
+train_loader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True, **kwargs)
+test_loader = DataLoader(test_data, batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.infl_ratio=3
-        self.fc1 = BinarizeLinear(784, 2048*self.infl_ratio)
+        # ! Change forward parameter if input size changed
+        self.fc1 = BinarizeLinear(144, 384*self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
-        self.bn1 = nn.BatchNorm1d(2048*self.infl_ratio)
-        self.fc2 = BinarizeLinear(2048*self.infl_ratio, 2048*self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(384*self.infl_ratio)
+        self.fc2 = BinarizeLinear(384*self.infl_ratio, 384*self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
-        self.bn2 = nn.BatchNorm1d(2048*self.infl_ratio)
-        self.fc3 = BinarizeLinear(2048*self.infl_ratio, 2048*self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(384*self.infl_ratio)
+        self.fc3 = BinarizeLinear(384*self.infl_ratio, 384*self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
-        self.bn3 = nn.BatchNorm1d(2048*self.infl_ratio)
-        self.fc4 = nn.Linear(2048*self.infl_ratio, 10)
+        self.bn3 = nn.BatchNorm1d(384*self.infl_ratio)
+        self.fc4 = nn.Linear(384*self.infl_ratio, 2)
         self.logsoftmax=nn.LogSoftmax()
         self.drop=nn.Dropout(0.5)
 
     def forward(self, x):
-        x = x.view(-1, 28*28)
+        x = x.view(-1, 12*12)
         x = self.fc1(x)
         x = self.bn1(x)
         x = self.htanh1(x)
@@ -87,7 +99,7 @@ class Net(nn.Module):
 
 model = Net()
 if args.cuda:
-    torch.cuda.set_device(3)
+    torch.cuda.set_device(0)
     model.cuda()
 
 
@@ -122,6 +134,8 @@ def train(epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
+
+    torch.save(model.state_dict(), "model.pth")
 
 def test():
     model.eval()
