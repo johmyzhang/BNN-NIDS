@@ -41,19 +41,18 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
-
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 training_data = PacketImageDataset(
     img_dir=args.train_datapath,
-    annotations_file=f'{args.train_datapath}/train.csv',
+    annotations_file='train.csv',
     transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.39,), (0.28,))
     ]))
 test_data = PacketImageDataset(
     img_dir=args.test_datapath,
-    annotations_file=f'{args.test_datapath}/test.csv',
+    annotations_file='test.csv',
     transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.39,), (0.28,))
@@ -76,7 +75,7 @@ class Net(nn.Module):
         self.fc3 = BinarizeLinear(128*self.infl_ratio, 128*self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
         self.bn3 = nn.BatchNorm1d(128*self.infl_ratio)
-        self.fc4 = nn.Linear(128*self.infl_ratio, 2)
+        self.fc4 = nn.Linear(128*self.infl_ratio, 5)
         self.logsoftmax=nn.LogSoftmax()
         self.drop=nn.Dropout(0.5)
 
