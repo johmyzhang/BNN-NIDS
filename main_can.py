@@ -3,14 +3,12 @@ from __future__ import print_function
 import argparse
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 from can_dataset import PacketImageDataset
-from models.binarized_modules import  BinarizeLinear,BinarizeConv2d
-from models.binarized_modules import  Binarize,HingeLoss
+from models.binarized_modules import  BinarizeLinear
 from torch.utils.data import DataLoader
 
 # Training settings
@@ -69,21 +67,21 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.infl_ratio=3
         # ! Change forward parameter if input size changed
-        self.fc1 = BinarizeLinear(144, 384*self.infl_ratio)
+        self.fc1 = BinarizeLinear(81, 128*self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
-        self.bn1 = nn.BatchNorm1d(384*self.infl_ratio)
-        self.fc2 = BinarizeLinear(384*self.infl_ratio, 384*self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(128*self.infl_ratio)
+        self.fc2 = BinarizeLinear(128*self.infl_ratio, 128*self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
-        self.bn2 = nn.BatchNorm1d(384*self.infl_ratio)
-        self.fc3 = BinarizeLinear(384*self.infl_ratio, 384*self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(128*self.infl_ratio)
+        self.fc3 = BinarizeLinear(128*self.infl_ratio, 128*self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
-        self.bn3 = nn.BatchNorm1d(384*self.infl_ratio)
-        self.fc4 = nn.Linear(384*self.infl_ratio, 2)
+        self.bn3 = nn.BatchNorm1d(128*self.infl_ratio)
+        self.fc4 = nn.Linear(128*self.infl_ratio, 2)
         self.logsoftmax=nn.LogSoftmax()
         self.drop=nn.Dropout(0.5)
 
     def forward(self, x):
-        x = x.view(-1, 12*12)
+        x = x.view(-1, 9*9)
         x = self.fc1(x)
         x = self.bn1(x)
         x = self.htanh1(x)

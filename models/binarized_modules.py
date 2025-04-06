@@ -104,7 +104,7 @@ class BinarizeLinear(nn.Linear):
 
     def forward(self, input):
 
-        if input.size(1) != 144:
+        if input.size(1) != 81:
             input_b=binarized(input)
         else:
             input_b=input
