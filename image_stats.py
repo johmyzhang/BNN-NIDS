@@ -40,7 +40,7 @@ def compute_mean_std_grayscale(image_dir):
 
 if __name__ == '__main__':
     # Set the directory containing your images
-    image_directory = '/Users/yizhang/Documents/GitHub/train_data/'  # Change this to your image directory path
+    image_directory = '/Users/yizhang/train_data/'  # Change this to your image directory path
     mean, std = compute_mean_std_grayscale(image_directory)
 
     print("Grayscale Image Statistics:")
