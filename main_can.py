@@ -77,11 +77,11 @@ def get_datasets():
     #     transform=test_transform)
 
     training_data = NetworkFeatureDataset(
-        csv='data/train.csv'
+        csv=args.train_datapath,
     )
 
     test_data = NetworkFeatureDataset(
-        csv='data/test.csv'
+        csv=args.test_datapath,
     )
 
     return training_data, test_data
