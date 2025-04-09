@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
 import torch.nn as nn
+
+from cicids_dataset import NetworkFeatureDataset
 from models.binarized_modules import BinarizeLinear
 import numpy as np
 
@@ -78,27 +80,6 @@ def load_model(model_path, device):
     return model
 
 
-def load_images_from_folder(folder, transform):
-    """
-    Load images from the specified folder using the provided transform.
-    Returns a list of filenames and a list of processed images.
-    """
-    filenames = []
-    images = []
-    for file in os.listdir(folder):
-        if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-            file_path = os.path.join(folder, file)
-            try:
-                image = Image.open(file_path).convert('L')
-                img1d = np.array(image)
-                img1d_ = transform(img1d)
-                images.append(img1d_)
-                filenames.append(file)
-            except Exception as e:
-                print(f"Error loading image {file}: {e}")
-    return filenames, images
-
-
 def main():
     parser = argparse.ArgumentParser(description='Batch inference on images.')
     parser.add_argument('--model', type=str, required=True, help='Path to the model file (pth)')
@@ -109,33 +90,18 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Define image transforms (adjust size and normalization as required by your model).
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.25,), (0.35,))
-        # If your model expects normalized images, uncomment and adjust the following:
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
     # Load the model.
     model = load_model(args.model, device)
 
-    # Load images from the specified folder.
-    filenames, images = load_images_from_folder(args.image_folder, transform)
-    if not images:
-        print("No images found in the folder.")
-        return
+    test_data = NetworkFeatureDataset(
+        csv=args.test_datapath,
+    )
 
     results = []
-    num_images = len(images)
     with torch.no_grad():
-        # Process images in batches.
-        for i in range(0, num_images, args.batch_size):
-            batch_images = images[i:i + args.batch_size]
-            batch_filenames = filenames[i:i + args.batch_size]
-            batch_tensor = torch.stack(batch_images).to(device)
-
-            outputs = model(batch_tensor)
+        for batch_idx, (data, target) in enumerate(test_data):
+            data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
+            outputs = model(data)
             # Convert model outputs to probabilities.
             probabilities = F.softmax(outputs, dim=1)
 
