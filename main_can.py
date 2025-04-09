@@ -68,12 +68,12 @@ def get_datasets():
     #
     # training_data = PacketImageDataset(
     #     img_dir=args.train_datapath,
-    #     annotations_file='train.csv',
+    #     annotations_file='train_ddos.csv',
     #     transform=train_transform)
     #
     # test_data = PacketImageDataset(
     #     img_dir=args.test_datapath,
-    #     annotations_file='test.csv',
+    #     annotations_file='test_ddos.csv',
     #     transform=test_transform)
 
     training_data = NetworkFeatureDataset(
@@ -105,7 +105,7 @@ class Net(nn.Module):
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(26 * self.infl_ratio, 2)
+        self.fc4 = nn.Linear(26 * self.infl_ratio, 6)
 
     def forward(self, x):
         # Flatten the input
