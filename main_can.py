@@ -105,7 +105,7 @@ class Net(nn.Module):
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(26 * self.infl_ratio, 6)
+        self.fc4 = nn.Linear(26 * self.infl_ratio, 2)
 
     def forward(self, x):
         # Flatten the input

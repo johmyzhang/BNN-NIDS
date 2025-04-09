@@ -4,6 +4,7 @@ import csv
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import torch.nn as nn
 
@@ -18,24 +19,24 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.infl_ratio = 3
         # Flattened input size is 81 (9x9)
-        self.fc1 = BinarizeLinear(81, 128 * self.infl_ratio)
-        self.bn1 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc1 = BinarizeLinear(26, 26 * self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(26 * self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
 
-        self.fc2 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
-        self.bn2 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc2 = BinarizeLinear(26 * self.infl_ratio, 26 * self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(26 * self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
 
-        self.fc3 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
-        self.bn3 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc3 = BinarizeLinear(26 * self.infl_ratio, 26 * self.infl_ratio)
+        self.bn3 = nn.BatchNorm1d(26 * self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(128 * self.infl_ratio, 5)
+        self.fc4 = nn.Linear(26 * self.infl_ratio, 6)
 
     def forward(self, x):
         # Flatten the input
-        x = x.view(-1, 9 * 9)
+        x = x.view(-1, 26)
 
         # First block
         x = self.fc1(x)
@@ -83,8 +84,7 @@ def load_model(model_path, device):
 def main():
     parser = argparse.ArgumentParser(description='Batch inference on images.')
     parser.add_argument('--model', type=str, required=True, help='Path to the model file (pth)')
-    parser.add_argument('--image-folder', type=str, required=True, help='Folder containing images for inference')
-    parser.add_argument('--output-csv', type=str, default='inference_results.csv', help='Output CSV file path')
+    parser.add_argument('--test-datapath', type=str, required=True, help='Folder containing images for inference')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size for inference')
     args = parser.parse_args()
 
@@ -97,35 +97,21 @@ def main():
         csv=args.test_datapath,
     )
 
-    results = []
+    test_loader = DataLoader(
+        test_data,
+        batch_size=args.batch_size,
+        shuffle=False,
+    )
+
+    correct = 0
     with torch.no_grad():
-        for batch_idx, (data, target) in enumerate(test_data):
+        for batch_idx, (data, target) in enumerate(test_loader):
             data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
             outputs = model(data)
-            # Convert model outputs to probabilities.
-            probabilities = F.softmax(outputs, dim=1)
+            pred = outputs.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
 
-            for j in range(len(batch_images)):
-                probs = probabilities[j].cpu().numpy().tolist()
-                # Predicted class: index with highest probability.
-                pred_class = probs.index(max(probs))
-                results.append({
-                    'filename': batch_filenames[j],
-                    'probabilities': probs,
-                    'result': pred_class
-                })
-
-    # Write inference results to a CSV file.
-    with open(args.output_csv, mode='w', newline='') as csv_file:
-        fieldnames = ['filename', 'probabilities', 'result']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for res in results:
-            # Convert the list of probabilities to a comma-separated string.
-            res['probabilities'] = ','.join([f'{p:.4f}' for p in res['probabilities']])
-            writer.writerow(res)
-
-    print(f"Inference results saved to {args.output_csv}")
+    print(f"Inference accuracy: {correct / len(test_data)}")
 
 
 if __name__ == '__main__':
