@@ -3,16 +3,10 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.cuda.amp as amp
-from torch.utils.data.distributed import DistributedSampler
-import torch.distributed as dist
-import torch.multiprocessing as mp
 import time
-import os
-
-from can_dataset import PacketImageDataset
+from cicids_dataset import NetworkFeatureDataset
 from models.binarized_modules import BinarizeLinear
 
 # Training settings
@@ -35,13 +29,13 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--train-datapath', type=str, default='train_data')
 parser.add_argument('--test-datapath', type=str, default='test_data')
-parser.add_argument('--amp', action='store_true', default=True,
+parser.add_argument('--amp', action='store_true', default=False,
                     help='use automatic mixed precision')
 parser.add_argument('--prefetch-factor', type=int, default=2,
                     help='number of batches to prefetch')
 parser.add_argument('--num-workers', type=int, default=4,
                     help='number of data loading workers')
-parser.add_argument('--compile', action='store_true', default=True,
+parser.add_argument('--compile', action='store_true', default=False,
                     help='use torch.compile for faster execution')
 
 args = parser.parse_args()
@@ -59,35 +53,36 @@ kwargs = {
     'prefetch_factor': args.prefetch_factor
 } if args.cuda else {}
 
-# Normalize using the same values but precomputing them
-mean = 0.25
-std = 0.35
-
-
 def get_datasets():
     # Data augmentation for training
-    train_transform = transforms.Compose([
-        transforms.RandomRotation(5),
-        transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
-        transforms.ToTensor(),
-        transforms.Normalize((mean,), (std,))
-    ])
+    # train_transform = transforms.Compose([
+    #     transforms.ToTensor(),
+    #     transforms.Normalize((mean,), (std,))
+    # ])
+    #
+    # # No augmentation for testing
+    # test_transform = transforms.Compose([
+    #     transforms.ToTensor(),
+    #     transforms.Normalize((mean,), (std,))
+    # ])
+    #
+    # training_data = PacketImageDataset(
+    #     img_dir=args.train_datapath,
+    #     annotations_file='train.csv',
+    #     transform=train_transform)
+    #
+    # test_data = PacketImageDataset(
+    #     img_dir=args.test_datapath,
+    #     annotations_file='test.csv',
+    #     transform=test_transform)
 
-    # No augmentation for testing
-    test_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((mean,), (std,))
-    ])
+    training_data = NetworkFeatureDataset(
+        csv='data/train.csv'
+    )
 
-    training_data = PacketImageDataset(
-        img_dir=args.train_datapath,
-        annotations_file='train.csv',
-        transform=train_transform)
-
-    test_data = PacketImageDataset(
-        img_dir=args.test_datapath,
-        annotations_file='test.csv',
-        transform=test_transform)
+    test_data = NetworkFeatureDataset(
+        csv='data/test.csv'
+    )
 
     return training_data, test_data
 
@@ -97,24 +92,24 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.infl_ratio = 3
         # Flattened input size is 81 (9x9)
-        self.fc1 = BinarizeLinear(81, 128 * self.infl_ratio)
-        self.bn1 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc1 = BinarizeLinear(20, 20 * self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(20 * self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
 
-        self.fc2 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
-        self.bn2 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc2 = BinarizeLinear(20 * self.infl_ratio, 20 * self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(20 * self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
 
-        self.fc3 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
-        self.bn3 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.fc3 = BinarizeLinear(20 * self.infl_ratio, 20 * self.infl_ratio)
+        self.bn3 = nn.BatchNorm1d(20 * self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(128 * self.infl_ratio, 5)
+        self.fc4 = nn.Linear(20 * self.infl_ratio, 2)
 
     def forward(self, x):
         # Flatten the input
-        x = x.view(-1, 9 * 9)
+        x = x.view(-1, 20)
 
         # First block
         x = self.fc1(x)
@@ -149,7 +144,7 @@ def train_epoch(model, train_loader, optimizer, criterion, scaler, epoch, device
 
         # Use AMP for mixed precision training
         if args.amp:
-            with amp.autocast():
+            with amp.autocast('cuda'):
                 output = model(data)
                 loss = criterion(output, target)
 
@@ -270,7 +265,7 @@ def main():
     )
 
     # Initialize gradient scaler for AMP
-    scaler = amp.GradScaler(enabled=args.amp)
+    scaler = torch.amp.GradScaler('cuda', enabled=args.amp)
 
     # Training loop
     best_accuracy = 0.0

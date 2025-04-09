@@ -1,274 +1,166 @@
-import torch
-from torch.autograd import Variable
-import torchvision.transforms as transforms
-from PIL import Image
-import numpy as np
+import argparse
 import os
-from pathlib import Path
+import csv
+import torch
+import torch.nn.functional as F
+from PIL import Image
+from torchvision import transforms
+import torch.nn as nn
 from models.binarized_modules import BinarizeLinear
+import numpy as np
 
-
-class Net(torch.nn.Module):
+# Import your model definition.
+# Here we assume your model class Net is defined in main_can.py.
+class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.infl_ratio = 3
-        self.fc1 = BinarizeLinear(144, 384 * self.infl_ratio)
-        self.htanh1 = torch.nn.Hardtanh()
-        self.bn1 = torch.nn.BatchNorm1d(384 * self.infl_ratio)
-        self.fc2 = BinarizeLinear(384 * self.infl_ratio, 384 * self.infl_ratio)
-        self.htanh2 = torch.nn.Hardtanh()
-        self.bn2 = torch.nn.BatchNorm1d(384 * self.infl_ratio)
-        self.fc3 = BinarizeLinear(384 * self.infl_ratio, 384 * self.infl_ratio)
-        self.htanh3 = torch.nn.Hardtanh()
-        self.bn3 = torch.nn.BatchNorm1d(384 * self.infl_ratio)
-        self.fc4 = torch.nn.Linear(384 * self.infl_ratio, 2)
-        self.logsoftmax = torch.nn.LogSoftmax(dim=1)
-        self.drop = torch.nn.Dropout(0.5)
+        # Flattened input size is 81 (9x9)
+        self.fc1 = BinarizeLinear(81, 128 * self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.htanh1 = nn.Hardtanh()
+
+        self.fc2 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.htanh2 = nn.Hardtanh()
+
+        self.fc3 = BinarizeLinear(128 * self.infl_ratio, 128 * self.infl_ratio)
+        self.bn3 = nn.BatchNorm1d(128 * self.infl_ratio)
+        self.htanh3 = nn.Hardtanh()
+
+        self.drop = nn.Dropout(0.5)
+        self.fc4 = nn.Linear(128 * self.infl_ratio, 5)
 
     def forward(self, x):
-        x = x.view(-1, 12 * 12)
+        # Flatten the input
+        x = x.view(-1, 9 * 9)
+
+        # First block
         x = self.fc1(x)
         x = self.bn1(x)
         x = self.htanh1(x)
+
+        # Second block
         x = self.fc2(x)
         x = self.bn2(x)
         x = self.htanh2(x)
+
+        # Third block
         x = self.fc3(x)
-        x = self.drop(x)
         x = self.bn3(x)
         x = self.htanh3(x)
+        x = self.drop(x)
+
+        # Output layer
         x = self.fc4(x)
-        return self.logsoftmax(x)
+        return torch.log_softmax(x, dim=1)  # More efficient than nn.LogSoftmax
 
 
-def load_model(model_path='model.pth', use_cuda=torch.cuda.is_available()):
+
+def load_model(model_path, device):
     """
-    Load the trained model from the specified path
-
-    Args:
-        model_path (str): Path to the saved model
-        use_cuda (bool): Whether to use CUDA if available
-
-    Returns:
-        model: The loaded neural network model
+    Load the model from the checkpoint file and remove any unwanted key prefixes.
     """
-    model = Net()
+    checkpoint = torch.load(model_path, map_location=device)
+    # Extract the model state dict. Change the key if needed.
+    state_dict = checkpoint.get('model_state_dict', checkpoint)
 
-    if use_cuda:
-        model.cuda()
-        model.load_state_dict(torch.load(model_path))
-    else:
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    # Remove unwanted prefix (e.g., '_orig_mod.') from each key.
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        new_key = key.replace('_orig_mod.', '')
+        new_state_dict[new_key] = value
 
-    model.eval()
+    model = Net()  # Make sure this architecture matches your training code.
+    model.load_state_dict(new_state_dict)
+    model.to(device)
+    model.eval()  # Set the model to evaluation mode.
     return model
 
 
-def preprocess_image(image_path):
+def load_images_from_folder(folder, transform):
     """
-    Preprocess an image file for model inference
-
-    Args:
-        image_path (str): Path to the image file
-
-    Returns:
-        torch.Tensor: Preprocessed image tensor
+    Load images from the specified folder using the provided transform.
+    Returns a list of filenames and a list of processed images.
     """
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.39,), (0.28,))
-    ])
-
-    try:
-        image = Image.open(image_path).convert('L')  # Convert to grayscale
-        img = np.array(image)  # Add batch dimension
-        img = transform(img)
-        return img
-    except Exception as e:
-        print(f"Error processing image {image_path}: {e}")
-        return None
-
-
-def infer(model, input_tensor, use_cuda=torch.cuda.is_available()):
-    """
-    Run inference on input data
-
-    Args:
-        model: Trained neural network model
-        input_tensor (torch.Tensor): Input data tensor
-        use_cuda (bool): Whether to use CUDA if available
-
-    Returns:
-        tuple: (predicted_class, probabilities)
-    """
-    if use_cuda:
-        input_tensor = input_tensor.cuda()
-
-    with torch.no_grad():
-        input_var = Variable(input_tensor)
-        output = model(input_var)
-
-        # Get probabilities
-        probabilities = torch.exp(output)
-
-        # Get predicted class
-        pred_class = output.data.max(1, keepdim=True)[1].item()
-
-        return pred_class, probabilities.cpu().numpy()[0]
-
-
-def batch_inference(model, input_tensors, use_cuda=torch.cuda.is_available()):
-    """
-    Run inference on a batch of input data
-
-    Args:
-        model: Trained neural network model
-        input_tensors (torch.Tensor): Batch of input data tensors
-        use_cuda (bool): Whether to use CUDA if available
-
-    Returns:
-        tuple: (predicted_classes, probabilities)
-    """
-    if use_cuda:
-        input_tensors = input_tensors.cuda()
-
-    with torch.no_grad():
-        input_var = Variable(input_tensors)
-        output = model(input_var)
-
-        # Get probabilities
-        probabilities = torch.exp(output)
-
-        # Get predicted classes
-        pred_classes = output.data.max(1, keepdim=True)[1].squeeze().cpu().numpy()
-
-        # Handle the case where there's only one sample
-        if pred_classes.ndim == 0:
-            pred_classes = np.array([pred_classes])
-
-        return pred_classes, probabilities.cpu().numpy()
-
-
-def process_image_folder(model, folder_path, batch_size=32, use_cuda=torch.cuda.is_available(), save_results=True,
-                         output_file="results.csv"):
-    """
-    Process all images in a folder using the model
-
-    Args:
-        model: Trained neural network model
-        folder_path (str): Path to the folder containing images
-        batch_size (int): Batch size for processing
-        use_cuda (bool): Whether to use CUDA if available
-        save_results (bool): Whether to save results to a CSV file
-        output_file (str): Path to save results if save_results is True
-
-    Returns:
-        dict: Dictionary mapping image filenames to their predictions and probabilities
-    """
-    folder = Path(folder_path)
-    # Get all image files (common formats)
-    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff']
-    image_files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in image_extensions]
-
-    if not image_files:
-        print(f"No image files found in {folder_path}")
-        return {}
-
-    results = {}
-    num_batches = (len(image_files) + batch_size - 1) // batch_size
-
-    for batch_idx in range(num_batches):
-        start_idx = batch_idx * batch_size
-        end_idx = min((batch_idx + 1) * batch_size, len(image_files))
-        batch_files = image_files[start_idx:end_idx]
-
-        # Prepare batch
-        batch_tensors = []
-        valid_files = []
-
-        for img_file in batch_files:
-            tensor = preprocess_image(img_file)
-            if tensor is not None:
-                batch_tensors.append(tensor)
-                valid_files.append(img_file)
-
-        if not batch_tensors:
-            print(f"Batch {batch_idx + 1}/{num_batches}: No valid images found")
-            continue
-
-        # Concatenate tensors
-        batch_input = torch.cat(batch_tensors, 0)
-
-        # Run inference
-        pred_classes, probs = batch_inference(model, batch_input, use_cuda)
-
-        # Store results
-        for i, (img_file, cls, prob) in enumerate(zip(valid_files, pred_classes, probs)):
-            results[img_file.name] = {
-                'file_path': str(img_file),
-                'predicted_class': int(cls),
-                'probabilities': prob.tolist()
-            }
-
-        print(f"Processed batch {batch_idx + 1}/{num_batches} ({len(valid_files)} images)")
-
-    # Save results to CSV if requested
-    if save_results:
-        import csv
-        with open(output_file, 'w', newline='') as csvfile:
-            fieldnames = ['filename', 'file_path', 'predicted_class', 'prob_class_0', 'prob_class_1']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-            writer.writeheader()
-            false_count = 0
-            for filename, data in results.items():
-                writer.writerow({
-                    'filename': filename,
-                    'file_path': data['file_path'],
-                    'predicted_class': data['predicted_class'],
-                    'prob_class_0': data['probabilities'][0],
-                    'prob_class_1': data['probabilities'][1]
-                })
-                if data['predicted_class'] != 1:
-                    false_count += 1
-
-        print(f"Results saved to {output_file}")
-        print(f"Accuracy: {false_count / len(results) }")
-
-    return results
+    filenames = []
+    images = []
+    for file in os.listdir(folder):
+        if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+            file_path = os.path.join(folder, file)
+            try:
+                image = Image.open(file_path).convert('L')
+                img1d = np.array(image)
+                img1d_ = transform(img1d)
+                images.append(img1d_)
+                filenames.append(file)
+            except Exception as e:
+                print(f"Error loading image {file}: {e}")
+    return filenames, images
 
 
 def main():
-    """
-    Example usage with image folder processing
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(description='CAN Model Inference')
-    parser.add_argument('--model', type=str, default='model.pth', help='Path to the trained model')
-    parser.add_argument('--image-folder', type=str, required=True, help='Path to folder containing images')
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size for processing')
-    parser.add_argument('--output', type=str, default='results.csv', help='Output CSV file path')
-    parser.add_argument('--no-cuda', action='store_true', default=False, help='Disable CUDA')
-
+    parser = argparse.ArgumentParser(description='Batch inference on images.')
+    parser.add_argument('--model', type=str, required=True, help='Path to the model file (pth)')
+    parser.add_argument('--image-folder', type=str, required=True, help='Folder containing images for inference')
+    parser.add_argument('--output-csv', type=str, default='inference_results.csv', help='Output CSV file path')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size for inference')
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
 
-    print(f"Loading model from {args.model}")
-    model = load_model(args.model, use_cuda)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    print(f"Processing images in {args.image_folder}")
-    results = process_image_folder(
-        model,
-        args.image_folder,
-        batch_size=args.batch_size,
-        use_cuda=use_cuda,
-        output_file=args.output
-    )
+    # Define image transforms (adjust size and normalization as required by your model).
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.25,), (0.35,))
+        # If your model expects normalized images, uncomment and adjust the following:
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-    print(f"Processed {len(results)} images")
-    print(f"Results saved to {args.output}")
+    # Load the model.
+    model = load_model(args.model, device)
+
+    # Load images from the specified folder.
+    filenames, images = load_images_from_folder(args.image_folder, transform)
+    if not images:
+        print("No images found in the folder.")
+        return
+
+    results = []
+    num_images = len(images)
+    with torch.no_grad():
+        # Process images in batches.
+        for i in range(0, num_images, args.batch_size):
+            batch_images = images[i:i + args.batch_size]
+            batch_filenames = filenames[i:i + args.batch_size]
+            batch_tensor = torch.stack(batch_images).to(device)
+
+            outputs = model(batch_tensor)
+            # Convert model outputs to probabilities.
+            probabilities = F.softmax(outputs, dim=1)
+
+            for j in range(len(batch_images)):
+                probs = probabilities[j].cpu().numpy().tolist()
+                # Predicted class: index with highest probability.
+                pred_class = probs.index(max(probs))
+                results.append({
+                    'filename': batch_filenames[j],
+                    'probabilities': probs,
+                    'result': pred_class
+                })
+
+    # Write inference results to a CSV file.
+    with open(args.output_csv, mode='w', newline='') as csv_file:
+        fieldnames = ['filename', 'probabilities', 'result']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for res in results:
+            # Convert the list of probabilities to a comma-separated string.
+            res['probabilities'] = ','.join([f'{p:.4f}' for p in res['probabilities']])
+            writer.writerow(res)
+
+    print(f"Inference results saved to {args.output_csv}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
