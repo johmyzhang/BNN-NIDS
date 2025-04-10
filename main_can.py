@@ -105,7 +105,7 @@ class Net(nn.Module):
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(26 * self.infl_ratio, 15)
+        self.fc4 = nn.Linear(26 * self.infl_ratio, 1)
 
     def forward(self, x):
         # Flatten the input
@@ -129,7 +129,7 @@ class Net(nn.Module):
 
         # Output layer
         x = self.fc4(x)
-        return torch.log_softmax(x, dim=1)  # More efficient than nn.LogSoftmax
+        return torch.sigmoid(x)  # More efficient than nn.LogSoftmax
 
 
 def train_epoch(model, train_loader, optimizer, criterion, scaler, epoch, device):
