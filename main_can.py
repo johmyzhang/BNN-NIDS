@@ -132,7 +132,7 @@ class Net(nn.Module):
         return torch.log_softmax(x, dim=1)  # More efficient than nn.LogSoftmax
 
 
-def train_epoch(model, train_loader, optimizer, criterion, scaler, epoch, device):
+def train_epoch(model, train_loader, optimizer, criterion, epoch, device):
     model.train()
     start_time = time.time()
     running_loss = 0.0
@@ -142,45 +142,21 @@ def train_epoch(model, train_loader, optimizer, criterion, scaler, epoch, device
 
         optimizer.zero_grad(set_to_none=True)  # More efficient than optimizer.zero_grad()
 
-        # Use AMP for mixed precision training
-        if args.amp:
-            with amp.autocast('cuda'):
-                output = model(data)
-                loss = criterion(output, target)
+        output = model(data)
+        loss = criterion(output, target)
+        loss.backward()
 
-            # Scale the loss and call backward
-            scaler.scale(loss).backward()
+        # Apply binary constraints
+        for p in list(model.parameters()):
+            if hasattr(p, 'org'):
+                p.data.copy_(p.org)
 
-            # Apply binary constraints
-            for p in list(model.parameters()):
-                if hasattr(p, 'org'):
-                    p.data.copy_(p.org)
+        optimizer.step()
 
-            # Update parameters with gradient scaling
-            scaler.step(optimizer)
-            scaler.update()
-
-            # Apply binarization constraint after optimizer step
-            for p in list(model.parameters()):
-                if hasattr(p, 'org'):
-                    p.org.copy_(p.data.clamp_(-1, 1))
-        else:
-            # Regular precision training
-            output = model(data)
-            loss = criterion(output, target)
-            loss.backward()
-
-            # Apply binary constraints
-            for p in list(model.parameters()):
-                if hasattr(p, 'org'):
-                    p.data.copy_(p.org)
-
-            optimizer.step()
-
-            # Apply binarization constraint after optimizer step
-            for p in list(model.parameters()):
-                if hasattr(p, 'org'):
-                    p.org.copy_(p.data.clamp_(-1, 1))
+        # Apply binarization constraint after optimizer step
+        for p in list(model.parameters()):
+            if hasattr(p, 'org'):
+                p.org.copy_(p.data.clamp_(-1, 1))
 
         running_loss += loss.item()
 
@@ -264,16 +240,13 @@ def main():
         verbose=True
     )
 
-    # Initialize gradient scaler for AMP
-    scaler = torch.amp.GradScaler('cuda', enabled=args.amp)
-
     # Training loop
     best_accuracy = 0.0
     start_time = time.time()
 
     for epoch in range(1, args.epochs + 1):
         # Train for one epoch
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, scaler, epoch, device)
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, epoch, device)
 
         # Evaluate on test set
         test_loss, accuracy = validate(model, test_loader, criterion, device)
