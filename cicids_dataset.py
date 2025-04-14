@@ -15,8 +15,8 @@ class NetworkFeatureDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        data = self.df.iloc[idx, :26].values.flatten()
-        label = int(self.df.iloc[idx, 26])
+        data = self.df.iloc[idx, :16].values.flatten()
+        label = int(self.df.iloc[idx, 16])
 
         normalized = data / 255.0
         tensor = torch.FloatTensor(normalized).unsqueeze(0)
