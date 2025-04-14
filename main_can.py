@@ -92,24 +92,24 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.infl_ratio = 3
         # Flattened input size is 81 (9x9)
-        self.fc1 = BinarizeLinear(26, 26 * self.infl_ratio)
-        self.bn1 = nn.BatchNorm1d(26 * self.infl_ratio)
+        self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio)
+        self.bn1 = nn.BatchNorm1d(16 * self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
 
-        self.fc2 = BinarizeLinear(26 * self.infl_ratio, 26 * self.infl_ratio)
-        self.bn2 = nn.BatchNorm1d(26 * self.infl_ratio)
+        self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
+        self.bn2 = nn.BatchNorm1d(16 * self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
 
-        self.fc3 = BinarizeLinear(26 * self.infl_ratio, 26 * self.infl_ratio)
-        self.bn3 = nn.BatchNorm1d(26 * self.infl_ratio)
+        self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
+        self.bn3 = nn.BatchNorm1d(16 * self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(26 * self.infl_ratio, 15)
+        self.fc4 = nn.Linear(16 * self.infl_ratio, 2)
 
     def forward(self, x):
         # Flatten the input
-        x = x.view(-1, 26)
+        x = x.view(-1, 16)
 
         # First block
         x = self.fc1(x)
