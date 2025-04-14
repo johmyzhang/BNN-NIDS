@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import torch.cuda.amp as amp
 import time
 from cicids_dataset import NetworkFeatureDataset
 from models.binarized_modules import BinarizeLinear
@@ -29,14 +28,8 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--train-datapath', type=str, default='train_data')
 parser.add_argument('--test-datapath', type=str, default='test_data')
-parser.add_argument('--amp', action='store_true', default=False,
-                    help='use automatic mixed precision')
-parser.add_argument('--prefetch-factor', type=int, default=2,
-                    help='number of batches to prefetch')
 parser.add_argument('--num-workers', type=int, default=4,
                     help='number of data loading workers')
-parser.add_argument('--compile', action='store_true', default=False,
-                    help='use torch.compile for faster execution')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -50,31 +43,9 @@ if args.cuda:
 kwargs = {
     'num_workers': args.num_workers,
     'pin_memory': True,
-    'prefetch_factor': args.prefetch_factor
 } if args.cuda else {}
 
 def get_datasets():
-    # Data augmentation for training
-    # train_transform = transforms.Compose([
-    #     transforms.ToTensor(),
-    #     transforms.Normalize((mean,), (std,))
-    # ])
-    #
-    # # No augmentation for testing
-    # test_transform = transforms.Compose([
-    #     transforms.ToTensor(),
-    #     transforms.Normalize((mean,), (std,))
-    # ])
-    #
-    # training_data = PacketImageDataset(
-    #     img_dir=args.train_datapath,
-    #     annotations_file='train_ddos.csv',
-    #     transform=train_transform)
-    #
-    # test_data = PacketImageDataset(
-    #     img_dir=args.test_datapath,
-    #     annotations_file='test_ddos.csv',
-    #     transform=test_transform)
 
     training_data = NetworkFeatureDataset(
         csv=args.train_datapath,
@@ -144,6 +115,7 @@ def train_epoch(model, train_loader, optimizer, criterion, epoch, device):
 
         output = model(data)
         loss = criterion(output, target)
+
         loss.backward()
 
         # Apply binary constraints
@@ -222,10 +194,6 @@ def main():
 
     # Create model
     model = Net().to(device)
-
-    # Use torch.compile for faster execution (PyTorch 2.0+)
-    if args.compile and hasattr(torch, 'compile'):
-        model = torch.compile(model)
 
     # Loss function and optimizer
     criterion = nn.CrossEntropyLoss()
