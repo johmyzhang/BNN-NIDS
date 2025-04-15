@@ -61,7 +61,7 @@ def get_datasets():
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.infl_ratio = 3
+        self.infl_ratio = 5
         # Flattened input size is 81 (9x9)
         self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio)
         self.bn1 = nn.BatchNorm1d(16 * self.infl_ratio)

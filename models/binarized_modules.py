@@ -127,7 +127,8 @@ class CoarseNormalization(nn.BatchNorm1d):
         super(CoarseNormalization, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-        out = Binarize.apply(input - 8, 'det')
+        batch_mean = torch.sum(input) / 16
+        out = Binarize.apply(input - batch_mean, 'det')
         return out
 
 class BinarizeConv2d(nn.Conv2d):
