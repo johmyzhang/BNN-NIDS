@@ -111,7 +111,8 @@ def train_epoch(model, train_loader, optimizer, criterion, epoch, device):
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
 
-        optimizer.zero_grad(set_to_none=True)  # More efficient than optimizer.zero_grad()
+        for param in model.parameters():
+            param.grad = None
 
         output = model(data)
         loss = criterion(output, target)

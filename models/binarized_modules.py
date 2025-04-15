@@ -103,17 +103,31 @@ class BinarizeLinear(nn.Linear):
         super(BinarizeLinear, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-
         if input.size(1) != 16:
             input_b=binarized(input)
         else:
             input_b=input
+        # print('-------------------------------------layer input')
+        # print(input_b)
         weight_b=binarized(self.weight)
+        # print('-------------------------------------layer weight')
+        # print(weight_b)
         out = nn.functional.linear(input_b,weight_b)
+        # print('-------------------------------------layer output')
+        # print(out)
         if not self.bias is None:
             self.bias.org=self.bias.data.clone()
             out += self.bias.view(1, -1).expand_as(out)
 
+        return out
+
+class CoarseNormalization(nn.BatchNorm1d):
+
+    def __init__(self, *kargs, **kwargs):
+        super(CoarseNormalization, self).__init__(*kargs, **kwargs)
+
+    def forward(self, input):
+        out = Binarize.apply(input - 8, 'det')
         return out
 
 class BinarizeConv2d(nn.Conv2d):
