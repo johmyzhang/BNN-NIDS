@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import time
 from cicids_dataset import NetworkFeatureDataset
-from models.binarized_modules import BinarizeLinear
+from models.binarized_modules import BinarizeLinear, CoarseNormalization
 
 # Training settings
 parser = argparse.ArgumentParser(description='CAN Data Test')
@@ -63,20 +63,20 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.infl_ratio = 5
         # Flattened input size is 81 (9x9)
-        self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio)
-        self.bn1 = nn.BatchNorm1d(16 * self.infl_ratio)
+        self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio, bias=False)
+        self.bn1 = CoarseNormalization(16 * self.infl_ratio)
         self.htanh1 = nn.Hardtanh()
 
-        self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
-        self.bn2 = nn.BatchNorm1d(16 * self.infl_ratio)
+        self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+        self.bn2 = CoarseNormalization(16 * self.infl_ratio)
         self.htanh2 = nn.Hardtanh()
 
-        self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
-        self.bn3 = nn.BatchNorm1d(16 * self.infl_ratio)
+        self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+        self.bn3 = CoarseNormalization(16 * self.infl_ratio)
         self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
-        self.fc4 = nn.Linear(16 * self.infl_ratio, 2)
+        self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2, bias=False)
 
     def forward(self, x):
         # Flatten the input

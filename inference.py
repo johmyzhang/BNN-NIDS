@@ -12,6 +12,7 @@ from cicids_dataset import NetworkFeatureDataset
 from models.binarized_modules import BinarizeLinear, CoarseNormalization
 import numpy as np
 
+torch.set_printoptions(precision=4)
 # Import your model definition.
 # Here we assume your model class Net is defined in main_can.py.
 class Net(nn.Module):
@@ -25,11 +26,11 @@ class Net(nn.Module):
 
         self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
         self.bn2 = CoarseNormalization(16 * self.infl_ratio)
-        # self.htanh2 = nn.Hardtanh()
+        self.htanh2 = nn.Hardtanh()
 
         self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
         self.bn3 = CoarseNormalization(16 * self.infl_ratio)
-        # self.htanh3 = nn.Hardtanh()
+        self.htanh3 = nn.Hardtanh()
 
         self.drop = nn.Dropout(0.5)
         self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2)
@@ -39,18 +40,30 @@ class Net(nn.Module):
         x = x.view(-1, 16)
 
         # First block
+        # print('Input layer in--------------')
+        # print(x)
         x = self.fc1(x)
+        # print('Input layer linear transformation out--------------')
+        # print(x)
         x = self.bn1(x)
+        # print('Input layer normalization out--------------')
+        # print(x)
         x = self.htanh1(x)
 
         # Second block
+        # print('Hidden 1 layer in--------------')
+        # print(x)
         x = self.fc2(x)
+        # print('Hidden 1 layer linear transformation out--------------')
+        # print(x)
         x = self.bn2(x)
-        # x = self.htanh2(x)
+        # print('Hidden 1 layer normalization out--------------')
+        # print(x)
+        x = self.htanh2(x)
         # Third block
         x = self.fc3(x)
         x = self.bn3(x)
-        # x = self.htanh3(x)
+        x = self.htanh3(x)
         x = self.drop(x)
 
         # Output layer
