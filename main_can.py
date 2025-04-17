@@ -61,18 +61,18 @@ def get_datasets():
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.infl_ratio = 5
+        self.infl_ratio = 4
         # Flattened input size is 81 (9x9)
         self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio, bias=False)
-        self.bn1 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+        self.bn1 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh1 = nn.Hardtanh()
 
         self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
-        self.bn2 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+        self.bn2 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh2 = nn.Hardtanh()
 
         self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
-        self.bn3 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+        self.bn3 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh3 = nn.Hardtanh()
 
         self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2, bias=False)
