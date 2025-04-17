@@ -116,28 +116,36 @@ class BinarizeLinear(nn.Linear):
         return out
 
 
-class CoarseNormalization(nn.LayerNorm):
+class CoarseNormalization(nn.Module):
 
-    def __init__(self, *kargs, **kwargs):
-        super(CoarseNormalization, self).__init__(*kargs, **kwargs)
+    def __init__(self, eps=1e-5, elementwise_affine=True, bias=True):
+        super(CoarseNormalization, self).__init__()
+        self.eps = eps
 
     def forward(self, input):
-        size = input.size(1)
-        mean = torch.sum(input) / size
+        mean = torch.mean(input, dim=1, keepdim=True)
         centered = input - mean
         centered_ap2 = self.ap2_tensor(centered)
-        deviations = torch.sum(centered * centered_ap2) / size
-        invert_std = torch.pow(torch.sqrt(deviations), -1)
+        deviation = torch.mean(centered * centered_ap2, dim=1, keepdim=True) + self.eps
+        invert_std = self.fast_inv_sqrt(deviation)
         invert_std_ap2 = self.ap2_tensor(invert_std)
         out = centered * invert_std_ap2
-        # out = Binarize.apply(batch_normalized, 'det')
         return out
 
 
     @staticmethod
     def ap2_tensor(x):
         signs = torch.sign(x)
-        return signs * torch.pow(2, torch.round(torch.log2(torch.abs(x))))
+        abs_x = torch.abs(x) + 1e-10
+        return signs * torch.pow(2, torch.round(torch.log2(abs_x)))
+
+    @staticmethod
+    def fast_inv_sqrt(x):
+        x = torch.clamp(x, min=1e-10)
+        i = x.int().type_as(x)
+        magic_constant = torch.tensor(0x5f3759df).type_as(i)
+        i = magic_constant - (i >> 1)
+        return i.type_as(x)
 
 
 class BinarizeConv2d(nn.Conv2d):
