@@ -1,11 +1,6 @@
 import argparse
-import os
-import csv
 import torch
-import torch.nn.functional as F
-from PIL import Image
 from torch.utils.data import DataLoader
-from torchvision import transforms
 import torch.nn as nn
 
 from cicids_dataset import NetworkFeatureDataset
@@ -16,55 +11,77 @@ torch.set_printoptions(precision=4)
 # Import your model definition.
 # Here we assume your model class Net is defined in main_can.py.
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, fine_norm, trace):
         super(Net, self).__init__()
-        self.infl_ratio = 3
-        # Flattened input size is 81 (9x9)
-        self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio)
-        self.bn1 = CoarseNormalization(16 * self.infl_ratio)
-        self.htanh1 = nn.Hardtanh()
+        self.infl_ratio = 4
+        self.trace = trace
+        if fine_norm:
+            print('Using Layer Normalization')
+            # Flattened input size is 81 (9x9)
+            self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio, bias=False)
+            self.bn1 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh1 = nn.Hardtanh()
 
-        self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
-        self.bn2 = CoarseNormalization(16 * self.infl_ratio)
-        self.htanh2 = nn.Hardtanh()
+            self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+            self.bn2 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh2 = nn.Hardtanh()
 
-        self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio)
-        self.bn3 = CoarseNormalization(16 * self.infl_ratio)
-        self.htanh3 = nn.Hardtanh()
+            self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+            self.bn3 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh3 = nn.Hardtanh()
 
-        self.drop = nn.Dropout(0.5)
-        self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2)
+            self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2, bias=False)
+        else:
+            print('Using Coarse Normalization')
+            self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio, bias=False)
+            self.bn1 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh1 = nn.Hardtanh()
+
+            self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+            self.bn2 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh2 = nn.Hardtanh()
+
+            self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
+            self.bn3 = CoarseNormalization(16 * self.infl_ratio, elementwise_affine=False, bias=False)
+            self.htanh3 = nn.Hardtanh()
+
+            self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2, bias=False)
 
     def forward(self, x):
         # Flatten the input
         x = x.view(-1, 16)
 
         # First block
-        # print('Input layer in--------------')
-        # print(x)
+        if self.trace:
+            print('Input layer in--------------')
+            print(x)
         x = self.fc1(x)
-        # print('Input layer linear transformation out--------------')
-        # print(x)
+        if self.trace:
+            print('Input layer linear transformation out--------------')
+            print(x)
         x = self.bn1(x)
-        # print('Input layer normalization out--------------')
-        # print(x)
+        if self.trace:
+            print('Input layer normalization out--------------')
+            print(x)
         x = self.htanh1(x)
 
         # Second block
-        # print('Hidden 1 layer in--------------')
-        # print(x)
+        if self.trace:
+            print('Hidden 1 layer in--------------')
+            print(x)
         x = self.fc2(x)
-        # print('Hidden 1 layer linear transformation out--------------')
-        # print(x)
+        if self.trace:
+            print('Hidden 1 layer linear transformation out--------------')
+            print(x)
         x = self.bn2(x)
-        # print('Hidden 1 layer normalization out--------------')
-        # print(x)
+        if self.trace:
+            print('Hidden 1 layer normalization out--------------')
+            print(x)
         x = self.htanh2(x)
         # Third block
         x = self.fc3(x)
         x = self.bn3(x)
         x = self.htanh3(x)
-        x = self.drop(x)
 
         # Output layer
         x = self.fc4(x)
@@ -72,7 +89,7 @@ class Net(nn.Module):
 
 
 
-def load_model(model_path, device):
+def load_model(model_path, device, fine_norm, trace):
     """
     Load the model from the checkpoint file and remove any unwanted key prefixes.
     """
@@ -86,7 +103,7 @@ def load_model(model_path, device):
         new_key = key.replace('_orig_mod.', '')
         new_state_dict[new_key] = value
 
-    model = Net()  # Make sure this architecture matches your training code.
+    model = Net(fine_norm, trace)  # Make sure this architecture matches your training code.
     model.load_state_dict(new_state_dict)
     model.to(device)
     model.eval()  # Set the model to evaluation mode.
@@ -98,12 +115,15 @@ def main():
     parser.add_argument('--model', type=str, required=True, help='Path to the model file (pth)')
     parser.add_argument('--test-datapath', type=str, required=True, help='Folder containing images for inference')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size for inference')
+    parser.add_argument('--coarse-norm', type=bool, default=False, help='Batch size for inference')
+    parser.add_argument('--trace', type=bool, default=False, help='Batch size for inference')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    fine_norm = not args.coarse_norm
 
     # Load the model.
-    model = load_model(args.model, device)
+    model = load_model(args.model, device, fine_norm, args.trace)
 
     test_data = NetworkFeatureDataset(
         csv=args.test_datapath,

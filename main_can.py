@@ -64,18 +64,17 @@ class Net(nn.Module):
         self.infl_ratio = 5
         # Flattened input size is 81 (9x9)
         self.fc1 = BinarizeLinear(16, 16 * self.infl_ratio, bias=False)
-        self.bn1 = CoarseNormalization(16 * self.infl_ratio)
+        self.bn1 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh1 = nn.Hardtanh()
 
         self.fc2 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
-        self.bn2 = CoarseNormalization(16 * self.infl_ratio)
+        self.bn2 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh2 = nn.Hardtanh()
 
         self.fc3 = BinarizeLinear(16 * self.infl_ratio, 16 * self.infl_ratio, bias=False)
-        self.bn3 = CoarseNormalization(16 * self.infl_ratio)
+        self.bn3 = nn.LayerNorm(16 * self.infl_ratio, elementwise_affine=False, bias=False)
         self.htanh3 = nn.Hardtanh()
 
-        self.drop = nn.Dropout(0.5)
         self.fc4 = BinarizeLinear(16 * self.infl_ratio, 2, bias=False)
 
     def forward(self, x):
@@ -96,7 +95,6 @@ class Net(nn.Module):
         x = self.fc3(x)
         x = self.bn3(x)
         x = self.htanh3(x)
-        x = self.drop(x)
 
         # Output layer
         x = self.fc4(x)

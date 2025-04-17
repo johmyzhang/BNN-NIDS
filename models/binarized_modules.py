@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from sympy.codegen.cnodes import sizeof
 from torch.autograd.function import Function, InplaceFunction
 
 
@@ -115,36 +116,23 @@ class BinarizeLinear(nn.Linear):
         return out
 
 
-class CoarseNormalization(nn.BatchNorm1d):
+class CoarseNormalization(nn.LayerNorm):
 
     def __init__(self, *kargs, **kwargs):
         super(CoarseNormalization, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-        batch_mean = torch.sum(input) / 16
-        # print('batch_mean')
-        # print(batch_mean)
-        centered_input = input - batch_mean
-        # print('centered_input')
-        # print(centered_input)
-        ap2 = self.ap2_tensor(centered_input)
-        # print('ap2')
-        # print(ap2)
-        deviations = torch.sum(centered_input * ap2) / 16
-        # print('deviations')
-        # print(deviations)
-        batch_std = torch.pow(torch.sqrt(deviations), -1)
-        # print('batch_std')
-        # print(batch_std)
-        out = centered_input * self.ap2_tensor(batch_std)
+        size = input.size(1)
+        mean = torch.sum(input) / size
+        centered = input - mean
+        centered_ap2 = self.ap2_tensor(centered)
+        deviations = torch.sum(centered * centered_ap2) / size
+        invert_std = torch.pow(torch.sqrt(deviations), -1)
+        invert_std_ap2 = self.ap2_tensor(invert_std)
+        out = centered * invert_std_ap2
         # out = Binarize.apply(batch_normalized, 'det')
         return out
 
-    @staticmethod
-    def bitwise_shift_tensor(x, shift):
-        left = x ** torch.pow(2, abs(shift))
-        right = x // torch.pow(2, abs(shift))
-        return torch.where(shift >= 0, left, right)
 
     @staticmethod
     def ap2_tensor(x):
