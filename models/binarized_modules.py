@@ -141,11 +141,10 @@ class CoarseNormalization(nn.Module):
 
     @staticmethod
     def fast_inv_sqrt(x):
-        x = torch.clamp(x, min=1e-10)
-        i = x.int().type_as(x)
-        magic_constant = torch.tensor(0x5f3759df).type_as(i)
-        i = magic_constant - (i >> 1)
-        return i.type_as(x)
+        y = x.view(torch.int32)
+        y = 0x5f3759df - y.bitwise_right_shift(1)
+        y = y.view(torch.float32)
+        return y
 
 
 class BinarizeConv2d(nn.Conv2d):
