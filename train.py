@@ -6,10 +6,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import time
 from cicids_dataset import NetworkFeatureDataset
-from models.binarized_modules import BinarizeLinear, CoarseNormalization
+from utils.binarized_modules import BinarizeLinear, CoarseNormalization
 
 # Training settings
-parser = argparse.ArgumentParser(description='CAN Data Test')
+parser = argparse.ArgumentParser(description='CICIDS dataset')
 parser.add_argument('--batch-size', type=int, default=512, metavar='N',
                     help='input batch size for training (default: 512)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',

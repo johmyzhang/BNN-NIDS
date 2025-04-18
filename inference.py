@@ -4,12 +4,12 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 
 from cicids_dataset import NetworkFeatureDataset
-from models.binarized_modules import BinarizeLinear, CoarseNormalization
+from utils.binarized_modules import BinarizeLinear, CoarseNormalization
 import numpy as np
 
 torch.set_printoptions(precision=4)
 # Import your model definition.
-# Here we assume your model class Net is defined in main_can.py.
+# Here we assume your model class Net is defined in train.py.
 class Net(nn.Module):
     def __init__(self, fine_norm, trace):
         super(Net, self).__init__()
